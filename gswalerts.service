@@ -1,0 +1,17 @@
+[Unit]
+Description=GSW Alerts — Order notification display
+After=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/gsw-alerts
+Environment="INVENTORY_SSE_URL=http://YOUR_INVENTORY_PI_TAILSCALE_IP:7000/api/sse/orders"
+Environment="INVENTORY_ORDERS_URL=http://YOUR_INVENTORY_PI_TAILSCALE_IP:7000/api/orders/store"
+Environment="PORT=7001"
+ExecStart=/usr/bin/python3 /home/pi/gsw-alerts/app.py
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

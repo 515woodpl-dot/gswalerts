@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GSW — Order Alerts</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --dark:    #0f172a;
+      --navy:    #1e3a5f;
+      --blue:    #3b82f6;
+      --green:   #22c55e;
+      --amber:   #f59e0b;
+      --red:     #ef4444;
+      --text:    #f1f5f9;
+      --muted:   #94a3b8;
+      --card:    #1e293b;
+      --border:  #334155;
+    }
+
+    body {
+      background: var(--dark);
+      color: var(--text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ── */
+    header {
+      background: var(--navy);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 2px solid var(--blue);
+      flex-shrink: 0;
+    }
+    .logo {
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+    }
+    .logo span { color: var(--blue); }
+
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--muted);
+      background: var(--card);
+      padding: 5px 12px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--red);
+      transition: background 0.3s;
+    }
+    .status-dot.connected { background: var(--green); animation: pulse 2s infinite; }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .time-display {
+      font-size: 0.8rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Main layout ── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 340px;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* ── Alert stage (left, big) ── */
+    #alert-stage {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* Idle state */
+    #idle-display {
+      text-align: center;
+      opacity: 0.4;
+    }
+    #idle-display svg { width: 80px; height: 80px; margin-bottom: 16px; }
+    #idle-display p { font-size: 0.9rem; color: var(--muted); }
+
+    /* Alert card */
+    #alert-card {
+      display: none;
+      width: 100%;
+      max-width: 520px;
+      background: var(--card);
+      border-radius: 20px;
+      border: 2px solid var(--green);
+      padding: 36px 40px;
+      box-shadow: 0 0 60px rgba(34, 197, 94, 0.2);
+      animation: popIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+      overflow: hidden;
+    }
+    #alert-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 4px;
+      background: linear-gradient(90deg, var(--green), var(--blue));
+      animation: sweep 2s ease-out;
+    }
+    @keyframes popIn {
+      from { transform: scale(0.8) translateY(30px); opacity: 0; }
+      to   { transform: scale(1) translateY(0);     opacity: 1; }
+    }
+    @keyframes sweep {
+      from { width: 0; }
+      to   { width: 100%; }
+    }
+
+    .alert-label {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--green);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .alert-label-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse 1s infinite;
+    }
+
+    #alert-order-number {
+      font-size: 2.2rem;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 6px;
+      letter-spacing: -0.5px;
+    }
+    #alert-customer {
+      font-size: 1rem;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    .alert-meta-row {
+      display: flex;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    .alert-meta-box {
+      flex: 1;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+    }
+    .alert-meta-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .alert-meta-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .alert-meta-value.green { color: var(--green); }
+
+    #alert-items {
+      font-size: 0.82rem;
+      color: var(--muted);
+      line-height: 1.7;
+      border-top: 1px solid var(--border);
+      padding-top: 14px;
+      margin-bottom: 20px;
+    }
+    #alert-items span { color: var(--text); font-weight: 500; }
+
+    #alert-time {
+      font-size: 0.72rem;
+      color: var(--muted);
+    }
+
+    /* Dismiss button */
+    #alert-dismiss {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: rgba(255,255,255,0.06);
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 4px 10px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #alert-dismiss:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+
+    /* Ripple effect on new order */
+    .ripple {
+      position: absolute;
+      border-radius: 50%;
+      border: 2px solid var(--green);
+      animation: rippleOut 1s ease-out forwards;
+      pointer-events: none;
+    }
+    @keyframes rippleOut {
+      from { width: 0; height: 0; opacity: 0.8; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+      to   { width: 600px; height: 600px; opacity: 0; top: 50%; left: 50%; transform: translate(-50%,-50%); }
+    }
+
+    /* ── Order history panel (right) ── */
+    #history-panel {
+      background: #111827;
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #history-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.75rem;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    #history-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+    #history-list::-webkit-scrollbar { width: 4px; }
+    #history-list::-webkit-scrollbar-track { background: transparent; }
+    #history-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .history-item {
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .history-item:hover { background: var(--card); }
+    .history-item.new-order { border-color: var(--green); background: rgba(34,197,94,0.05); }
+
+    .history-order-num {
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 2px;
+    }
+    .history-customer {
+      font-size: 0.72rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .history-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .history-total {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--green);
+    }
+    .history-status {
+      font-size: 0.62rem;
+      font-weight: 700;
+      border-radius: 9999px;
+      padding: 2px 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .s-pending   { background:#451a03; color:#fbbf24; }
+    .s-confirmed { background:#172554; color:#93c5fd; }
+    .s-ready     { background:#052e16; color:#86efac; }
+    .s-completed { background:#1e293b; color:#94a3b8; }
+    .s-cancelled { background:#450a0a; color:#fca5a5; }
+
+    /* Sound toggle */
+    #sound-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 4px 9px;
+      font-size: 0.72rem;
+      cursor: pointer;
+    }
+    #sound-btn.on { border-color: var(--blue); color: var(--blue); }
+
+    /* Mobile: stack layout */
+    @media (max-width: 640px) {
+      main { grid-template-columns: 1fr; grid-template-rows: 1fr auto; }
+      #history-panel { max-height: 220px; border-left: none; border-top: 1px solid var(--border); }
+      #alert-stage { padding: 20px; }
+      #alert-order-number { font-size: 1.6rem; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header>
+  <div class="logo">GSW<span>.</span> Orders</div>
+  <div class="header-right">
+    <span class="time-display" id="clock">--:--:--</span>
+    <button id="sound-btn" class="on" onclick="toggleSound()">🔔 Sound On</button>
+    <div class="status-pill">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="status-label">Connecting…</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- Alert stage -->
+  <div id="alert-stage">
+    <!-- Idle -->
+    <div id="idle-display">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+        <line x1="3" y1="6" x2="21" y2="6"/>
+        <path d="M16 10a4 4 0 0 1-8 0"/>
+      </svg>
+      <p>Waiting for orders…</p>
+    </div>
+
+    <!-- Alert card (shown on new order) -->
+    <div id="alert-card">
+      <button id="alert-dismiss" onclick="dismissAlert()">Dismiss</button>
+
+      <div class="alert-label">
+        <span class="alert-label-dot"></span>
+        New Order Received
+      </div>
+
+      <div id="alert-order-number">GSW-000000-XXXX</div>
+      <div id="alert-customer">Customer name</div>
+
+      <div class="alert-meta-row">
+        <div class="alert-meta-box">
+          <div class="alert-meta-label">Total</div>
+          <div class="alert-meta-value green" id="alert-total">$0.00</div>
+        </div>
+        <div class="alert-meta-box">
+          <div class="alert-meta-label">Items</div>
+          <div class="alert-meta-value" id="alert-item-count">0</div>
+        </div>
+      </div>
+
+      <div id="alert-items"></div>
+      <div id="alert-time"></div>
+    </div>
+  </div>
+
+  <!-- History panel -->
+  <div id="history-panel">
+    <div id="history-header">Recent Orders</div>
+    <div id="history-list">
+      <p style="color:var(--muted);font-size:0.78rem;text-align:center;margin-top:20px">Loading…</p>
+    </div>
+  </div>
+</main>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let _soundOn = true;
+let _evtSource = null;
+let _dismissTimer = null;
+let _orders = [];
+
+// ── Clock ─────────────────────────────────────────────────────────────────────
+function updateClock() {
+  document.getElementById('clock').textContent =
+    new Date().toLocaleTimeString('en-US', { hour12: false });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// ── Sound ────────────────────────────────────────────────────────────────────
+function toggleSound() {
+  _soundOn = !_soundOn;
+  const btn = document.getElementById('sound-btn');
+  btn.textContent = _soundOn ? '🔔 Sound On' : '🔕 Sound Off';
+  btn.className = _soundOn ? 'on' : '';
+}
+
+function playAlert() {
+  if (!_soundOn) return;
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [[880, 0], [1100, 0.15], [880, 0.3], [1320, 0.45]].forEach(([freq, t]) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + t);
+      osc.type = 'sine';
+      gain.gain.setValueAtTime(0, ctx.currentTime + t);
+      gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + t + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.25);
+      osc.start(ctx.currentTime + t);
+      osc.stop(ctx.currentTime + t + 0.25);
+    });
+  } catch(e) {}
+}
+
+// ── Ripple effect ─────────────────────────────────────────────────────────────
+function spawnRipple() {
+  const stage = document.getElementById('alert-stage');
+  const el = document.createElement('div');
+  el.className = 'ripple';
+  stage.appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+// ── Alert display ─────────────────────────────────────────────────────────────
+function showAlert(order) {
+  const card = document.getElementById('alert-card');
+  const idle = document.getElementById('idle-display');
+
+  document.getElementById('alert-order-number').textContent = order.order_number;
+  document.getElementById('alert-customer').textContent =
+    order.customer_name || order.customer_email || 'Customer';
+  document.getElementById('alert-total').textContent =
+    '$' + Number(order.total).toFixed(2);
+  document.getElementById('alert-item-count').textContent =
+    order.item_count || '—';
+
+  const time = order.created_at
+    ? new Date(order.created_at).toLocaleTimeString()
+    : new Date().toLocaleTimeString();
+  document.getElementById('alert-time').textContent = '⏱ Received at ' + time;
+
+  // Items list if available
+  const itemsEl = document.getElementById('alert-items');
+  if (order.items && order.items.length) {
+    itemsEl.innerHTML = order.items.map(i =>
+      `<span>${i.name}</span> × ${i.quantity}`
+    ).join('<br>');
+  } else {
+    itemsEl.textContent = '';
+  }
+
+  idle.style.display = 'none';
+  card.style.display = 'block';
+  // Re-trigger animation
+  card.style.animation = 'none';
+  card.offsetHeight; // reflow
+  card.style.animation = '';
+
+  spawnRipple();
+  spawnRipple();
+
+  // Auto-dismiss after 30s
+  if (_dismissTimer) clearTimeout(_dismissTimer);
+  _dismissTimer = setTimeout(dismissAlert, 30000);
+
+  // Add to top of history
+  _orders.unshift({ ...order, _new: true });
+  renderHistory();
+}
+
+function dismissAlert() {
+  document.getElementById('alert-card').style.display = 'none';
+  document.getElementById('idle-display').style.display = 'block';
+  if (_dismissTimer) { clearTimeout(_dismissTimer); _dismissTimer = null; }
+}
+
+// ── History panel ─────────────────────────────────────────────────────────────
+function renderHistory() {
+  const list = document.getElementById('history-list');
+  if (!_orders.length) {
+    list.innerHTML = '<p style="color:var(--muted);font-size:0.78rem;text-align:center;margin-top:20px">No orders yet.</p>';
+    return;
+  }
+  list.innerHTML = _orders.map(o => {
+    const statusClass = 's-' + (o.status || 'pending');
+    const customer = o.customer_name || o.customer_email || 'Customer';
+    const total = '$' + Number(o.total || 0).toFixed(2);
+    return `<div class="history-item${o._new ? ' new-order' : ''}">
+      <div class="history-order-num">${o.order_number}</div>
+      <div class="history-customer">${customer}</div>
+      <div class="history-footer">
+        <span class="history-total">${total}</span>
+        <span class="history-status ${statusClass}">${(o.status || 'pending').toUpperCase()}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function loadRecentOrders() {
+  try {
+    const res = await fetch('/api/orders');
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      _orders = data;
+      renderHistory();
+    }
+  } catch(e) {
+    console.warn('Could not load recent orders:', e);
+  }
+}
+
+// ── SSE Connection ─────────────────────────────────────────────────────────────
+function connectSSE() {
+  if (_evtSource) return;
+
+  _evtSource = new EventSource('/api/sse');
+  const dot = document.getElementById('status-dot');
+  const label = document.getElementById('status-label');
+
+  _evtSource.onopen = () => {
+    dot.className = 'status-dot connected';
+    label.textContent = 'Connected';
+  };
+
+  _evtSource.addEventListener('new_order', (e) => {
+    const order = JSON.parse(e.data);
+    playAlert();
+    showAlert(order);
+  });
+
+  _evtSource.addEventListener('order_status', (e) => {
+    const { order_id, status } = JSON.parse(e.data);
+    _orders = _orders.map(o => o.id === order_id ? { ...o, status } : o);
+    renderHistory();
+  });
+
+  _evtSource.onerror = () => {
+    dot.className = 'status-dot';
+    label.textContent = 'Reconnecting…';
+    _evtSource.close();
+    _evtSource = null;
+    setTimeout(connectSSE, 5000);
+  };
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  connectSSE();
+  loadRecentOrders();
+  // Refresh history every 60s
+  setInterval(loadRecentOrders, 60000);
+});
+</script>
+</body>
+</html>
