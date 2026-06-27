@@ -54,23 +54,26 @@ def _broadcast(event: str, data: dict):
 
 
 def _bridge_loop():
-    """Background thread: maintains SSE connection to inventory Pi and rebroadcasts."""
+    """Background thread: maintains SSE connection to inventory Pi and rebroadcasts.
+    Uses requests with stream=True for proper chunked transfer support."""
     global _bridge_running
     _bridge_running = True
 
     while _bridge_running:
         try:
-            import urllib.request
+            import requests as _req
             print(f"[Bridge] Connecting to inventory Pi: {INVENTORY_SSE_URL}")
 
-            req = urllib.request.Request(INVENTORY_SSE_URL)
-            with urllib.request.urlopen(req, timeout=60) as resp:
+            with _req.get(INVENTORY_SSE_URL, stream=True, timeout=None,
+                          headers={"Accept": "text/event-stream"}) as resp:
+                resp.raise_for_status()
                 print("[Bridge] Connected to inventory Pi SSE stream")
-                buf = ""
                 event_name = "message"
 
-                for raw_line in resp:
-                    line = raw_line.decode("utf-8").rstrip("\n").rstrip("\r")
+                for raw_line in resp.iter_lines(decode_unicode=True):
+                    if raw_line is None:
+                        continue
+                    line = raw_line.strip()
 
                     if line.startswith("event:"):
                         event_name = line[6:].strip()
@@ -82,10 +85,9 @@ def _bridge_loop():
                         except json.JSONDecodeError:
                             pass
                         event_name = "message"
-                    elif line == "":
-                        # blank line = end of event block
+                    elif line == "" or line.startswith(":"):
+                        # blank line = end of event block, colon = keep-alive ping
                         event_name = "message"
-                    # ignore ": ping" keep-alives
 
         except Exception as e:
             print(f"[Bridge] Connection lost: {e} — retrying in 5s")
@@ -136,11 +138,11 @@ def sse():
 @app.route("/api/orders")
 def recent_orders():
     """Proxy recent orders from inventory Pi so the browser doesn't need direct access."""
-    import urllib.request
     try:
-        with urllib.request.urlopen(INVENTORY_ORDERS_URL, timeout=5) as r:
-            data = json.loads(r.read().decode())
-            return jsonify(data[:20])  # latest 20
+        import requests as _req
+        r = _req.get(INVENTORY_ORDERS_URL, timeout=5)
+        r.raise_for_status()
+        return jsonify(r.json()[:20])
     except Exception as e:
         return jsonify({"error": str(e)}), 503
 
